@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="AgentInferAgent forecasts traffic, routes requests, tunes serving, and contains inference failures under strict latency and cost SLOs.">
+  <meta name="theme-color" content="#07111f">
+  <title>AgentInferAgent</title>
+  <script>
+    try {
+      const savedTheme = localStorage.getItem("AgentInferAgent-theme");
+      document.documentElement.dataset.theme = savedTheme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      const savedLanguage = localStorage.getItem("AgentInferAgent-language");
+      document.documentElement.lang = savedLanguage || "en";
+    } catch { document.documentElement.dataset.theme = "dark"; }
+  </script>
+  <style>
+    :root {
+      --paper: #f3f7fc;
+      --paper-soft: #e6eef8;
+      --panel: rgba(255,255,255,.72);
+      --ink: #0b1626;
+      --muted: #53657c;
+      --line: rgba(17,42,76,.18);
+      --accent: #5a7dff;
+      --accent-soft: color-mix(in srgb, var(--accent) 13%, transparent);
+      --reverse: #f7fbff;
+    }
+    :root[data-theme="dark"] {
+      --paper: #07111f;
+      --paper-soft: #0a192b;
+      --panel: rgba(12,29,50,.72);
+      --ink: #f2f7ff;
+      --muted: #9db0ca;
+      --line: rgba(207,225,255,.16);
+    }
+    * { box-sizing: border-box; }
+    html { font-size: 17px; scroll-behavior: smooth; scroll-padding-top: 110px; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 82% 0, color-mix(in srgb, var(--accent) 20%, transparent), transparent 30rem),
+        linear-gradient(145deg, var(--paper), var(--paper-soft));
+      font-family: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Songti SC", "STSong", "SimSun", serif;
+      min-height: 100vh;
+    }
+    a { color: inherit; }
+    button, a { -webkit-tap-highlight-color: transparent; }
+    .shell { width: min(1380px, calc(100% - 96px)); margin: 0 auto; }
+    .topbar { position: fixed; z-index: 100; top: 0; left: 0; width: 100%; height: 88px; border-bottom: 1px solid transparent; transition: height 300ms ease, border-color 300ms ease, background-color 300ms ease; }
+    .topbar.is-scrolled { height: 72px; border-color: var(--line); background: color-mix(in srgb, var(--paper) 90%, transparent); backdrop-filter: blur(18px); }
+    .topbar-inner { width: 100%; height: 100%; margin: 0; padding-inline: max(48px, calc((100vw - 1380px) / 2)); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 24px; }
+    .brand { display: flex; align-items: center; justify-self: start; gap: 12px; text-decoration: none; }
+    .brand-mark { display: grid; place-items: center; width: 35px; height: 35px; border: 1px solid var(--ink); color: var(--ink); font: 700 .82rem/1 "Consolas", monospace; }
+    .brand strong { display: block; font-family: "Constantia", "Iowan Old Style", Georgia, serif; font-size: 1.18rem; font-weight: 600; letter-spacing: -.035em; line-height: 1.2; }
+    .nav { display: flex; justify-content: center; gap: 34px; }
+    .nav a { position: relative; color: var(--ink); font-family: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Songti SC", "STSong", "SimSun", serif; font-size: .82rem; font-weight: 550; letter-spacing: 0; text-decoration: none; text-transform: none; }
+    .nav a::after { position: absolute; right: 0; bottom: -7px; left: 0; height: 1px; content: ""; background: currentColor; transform: scaleX(0); transform-origin: right; transition: transform 250ms ease; }
+    .nav a:hover::after, .nav a:focus-visible::after, .nav a.is-active::after { transform: scaleX(1); transform-origin: left; }
+    .controls { display: flex; align-items: center; justify-self: end; gap: 14px; }
+    .control { padding: 0; border: 0; color: var(--ink); background: transparent; cursor: pointer; font-family: "Aptos", "Segoe UI", sans-serif; }
+    .control[data-language] { display: flex; align-items: center; gap: 6px; padding: 8px 2px; font-family: "SFMono-Regular", "Cascadia Code", "Roboto Mono", "Liberation Mono", monospace; font-size: .82rem; font-weight: 600; }
+    .control[data-language] > span:not(.language-divider) { color: var(--muted); transition: color 180ms ease; }
+    .control[data-language] > span.is-current { color: var(--ink); }
+    .language-divider { color: color-mix(in srgb, var(--ink) 34%, transparent); }
+    .control[data-theme-toggle] { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line-strong); transition: color 180ms ease, border-color 180ms ease, background 180ms ease, transform 220ms ease; }
+    .control[data-theme-toggle]:hover { color: var(--paper); border-color: var(--accent); background: var(--accent); transform: rotate(8deg); }
+    .theme-icon { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+    .theme-icon-sun { display: none; }
+    :root[data-theme="dark"] .theme-icon-sun { display: block; }
+    :root[data-theme="dark"] .theme-icon-moon { display: none; }
+    .hero { position: relative; display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(420px, .85fr); column-gap: clamp(36px, 5vw, 74px); row-gap: 48px; align-items: center; padding-top: calc(88px + 72px); padding-bottom: 64px; }
+    .hero-copy { min-width: 0; }
+    .stage-index { color: var(--accent); font: 650 .72rem/1.4 "Consolas", monospace; letter-spacing: .12em; }
+    h1, h2, h3 { margin: 0; }
+    .hero-title { max-width: 1180px; font-family: "Constantia", "Iowan Old Style", Georgia, serif; font-size: clamp(3.8rem, 5.2vw, 5.8rem); font-weight: 400; letter-spacing: -.045em; line-height: 1.08; }
+    .hero-title > span { display: block; }
+    html[lang="en"] .hero-title { font-size: clamp(3.2rem, 4.35vw, 4.9rem); letter-spacing: -.05em; }
+    .hero-title-accent { color: var(--accent); font-style: italic; }
+    html[lang="zh"] .hero-title { font-size: clamp(3.8rem, 5.2vw, 5.8rem); font-style: normal; letter-spacing: -.045em; line-height: 1.1; }
+    html[lang="zh"] .hero-title-accent { font-style: normal; }
+    .hero-title .is-streaming::after { display: inline-block; width: .06em; height: .82em; margin-left: .08em; background: var(--accent); content: ""; vertical-align: -.05em; animation: caret 720ms steps(1, end) infinite; }
+    @keyframes caret { 50% { opacity: 0; } }
+    .hero-subtitle { max-width: 910px; margin: 32px 0 0; color: var(--ink); font-family: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Songti SC", "STSong", "SimSun", serif; font-size: clamp(1.06rem, 1.2vw, 1.24rem); line-height: 1.78; }
+    .hero-portrait { width: min(100%, 600px); justify-self: end; pointer-events: none; }
+    .hero-portrait img { display: block; width: 100%; height: auto; filter: none; }
+    .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 34px; }
+    .action { display: inline-flex; align-items: center; gap: 12px; min-height: 52px; padding: 0 22px; border: 1px solid var(--accent); text-decoration: none; font-family: "Baskerville", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", "Songti SC", "STSong", "SimSun", serif; font-size: .95rem; font-weight: 600; letter-spacing: .01em; }
+    .action.primary { color: var(--reverse); background: var(--accent); }
+    .action:hover { transform: translateY(-2px); }
+    .github-icon { width: 20px; height: 20px; fill: currentColor; }
+    .github-arrow { margin-left: 4px; font-size: 1rem; line-height: 1; transform: translateY(-1px); }
+    .section { padding-block: clamp(64px, 8vw, 110px); border-top: 1px solid var(--line); }
+    .section-head { margin-bottom: 38px; }
+    .section-head h2 { font: 400 clamp(2.4rem, 4vw, 4.2rem)/1 Georgia, serif; letter-spacing: -.045em; }
+    .section-head p { max-width: 680px; margin: 12px 0 0; color: var(--muted); line-height: 1.7; }
+    .stages { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
+    .stage { min-height: 230px; padding: 25px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--panel); }
+    .stage:nth-child(2), .stage:nth-child(5) { background: color-mix(in srgb, var(--accent) 6%, var(--panel)); }
+    .stage h3 { margin-top: 28px; font: 400 1.5rem/1.15 Georgia, serif; }
+    .stage p { margin: 14px 0 0; color: var(--muted); line-height: 1.65; }
+    .principles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+    .principles article { min-height: 210px; padding: 24px; border: 1px solid var(--line); background: var(--panel); }
+    .principles span { color: var(--accent); font: 650 .75rem/1 "Consolas", monospace; }
+    .principles h3 { margin-top: 42px; font: 400 1.45rem/1.2 Georgia, serif; }
+    .principles p { color: var(--muted); line-height: 1.65; }
+    @media (max-width: 860px) {
+      .topbar { height: 76px; }
+      .topbar-inner { padding-inline: 24px; }
+      .hero { padding-top: calc(76px + 66px); }
+      .nav { display: none; }
+      .hero-subtitle { max-width: 680px; }
+      .hero { grid-template-columns: 1fr; }
+      .hero-portrait { width: min(520px, 82vw); justify-self: start; }
+      html[lang="en"] .hero-title { font-size: clamp(2.55rem, 8.5vw, 3.8rem); }
+      html[lang="zh"] .hero-title { font-size: clamp(3.2rem, 10.2vw, 5.1rem); line-height: 1.14; }
+      .section-head { grid-template-columns: 1fr; gap: 10px; }
+      .stages, .principles { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 560px) {
+      .shell { width: min(100% - 32px, 1380px); }
+      .control { padding-inline: 9px; }
+      html[lang="en"] .hero-title { font-size: clamp(2rem, 7.8vw, 3.05rem); line-height: 1.1; }
+      html[lang="zh"] .hero-title { font-size: clamp(2.7rem, 10.8vw, 3.75rem); line-height: 1.16; }
+      .hero-subtitle { margin-top: 26px; font-size: .94rem; }
+      .stages, .principles { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) { * { animation: none !important; scroll-behavior: auto !important; } }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="shell topbar-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark">JL</span>
+        <span><strong>Jialiang Li's AgentInferAgent</strong></span>
+      </a>
+      <nav class="nav" aria-label="Project navigation">
+        <a href="#principles" data-en="Design" data-zh="设计">Design</a>
+        <a href="#loop" data-en="Implementation" data-zh="实现">Implementation</a>
+      </nav>
+      <div class="controls">
+        <button class="control" type="button" data-language><span data-language-current="en">EN</span><span class="language-divider">/</span><span data-language-current="zh">中文</span></button>
+        <button class="control" type="button" data-theme-toggle aria-label="Switch to dark mode" aria-pressed="false"><svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"></circle><path d="M12 2v2.2M12 19.8V22M4.93 4.93l1.56 1.56M17.51 17.51l1.56 1.56M2 12h2.2M19.8 12H22M4.93 19.07l1.56-1.56M17.51 6.49l1.56-1.56"></path></svg><svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 15.3A8.5 8.5 0 0 1 8.7 3.8 8.5 8.5 0 1 0 20.2 15.3Z"></path></svg></button>
+      </div>
+    </div>
+  </header>
+
+  <main class="shell" id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <h1 class="hero-title">
+          <span data-en="Hi! I’m" data-zh="Hi！我是">Hi! I’m</span>
+          <span class="hero-title-accent" data-en="Jialiang Li’s AgentInferAgent" data-zh="李嘉梁的 AgentInferAgent">Jialiang Li’s AgentInferAgent</span>
+          <span data-en="An Actively Routing" data-zh="一个主动调度并自适应路由的" data-break-before="并">An Actively Routing</span>
+          <span class="hero-title-accent" data-en="Inference Control Engine" data-zh="推理控制引擎">Inference Control Engine</span>
+        </h1>
+        <p class="hero-subtitle" data-en="Static serving waits for overload. AgentInferAgent forecasts demand, routes by SLO, selects cache and quantization policies, and isolates degradation before users feel it." data-zh="静态服务只能等待过载发生；AgentInferAgent 预测需求、按 SLO 路由，选择缓存与量化策略，并在用户感知前隔离故障。">Static serving waits for overload. AgentInferAgent forecasts demand, routes by SLO, selects cache and quantization policies, and isolates degradation before users feel it.</p>
+        <div class="hero-actions">
+          <a class="action primary" href="https://github.com/0x0addc001/AgentInferAgent" target="_blank" rel="noreferrer">
+            <svg class="github-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .7C5.7.7.7 5.7.7 12c0 5 3.3 9.2 7.8 10.7.6.1.8-.3.8-.6v-2.2c-3.2.7-3.9-1.4-3.9-1.4-.5-1.3-1.3-1.6-1.3-1.6-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1.1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.3 1.2a11 11 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.7.2 2.9.1 3.2.8.9 1.2 1.9 1.2 3.2 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.5-1.5 7.8-5.7 7.8-10.7C23.3 5.7 18.3.7 12 .7z"/></svg><span>GitHub</span><span class="github-arrow" aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </div>
+      <div class="hero-portrait" aria-hidden="true">
+        <img class="portrait-image" src="./assets/portrait-light.png" alt="">
+      </div>
+    </section>
+
+    <section class="section" id="principles">
+      <div class="section-head">
+        <div>
+          <h2 data-en="Design" data-zh="设计">Design</h2>
+          <p data-en="The Agent is only as useful as the boundaries around it are clear." data-zh="Agent 的价值，取决于它周围的边界是否足够清晰。">The Agent is only as useful as the boundaries around it are clear.</p>
+        </div>
+      </div>
+      <div class="principles">
+        <article>
+          <span>01</span>
+          <h3 data-en="SLO precedes policy" data-zh="SLO 先于策略">SLO precedes policy</h3>
+          <p data-en="Latency, reliability, and cost limits define the feasible routing space." data-zh="延迟、可靠性与成本边界共同定义可路由空间。">Latency, reliability, and cost limits define the feasible routing space.</p>
+        </article>
+        <article>
+          <span>02</span>
+          <h3 data-en="Explain every route" data-zh="每次路由可解释">Explain every route</h3>
+          <p data-en="Routing decisions retain traffic, hardware, cache, and model evidence." data-zh="每次路由保留流量、硬件、缓存与模型依据。">Routing decisions retain traffic, hardware, cache, and model evidence.</p>
+        </article>
+        <article>
+          <span>03</span>
+          <h3 data-en="Degrade with evidence" data-zh="有证据地降级">Degrade with evidence</h3>
+          <p data-en="Fallback paths protect availability without hiding quality loss." data-zh="降级路径保护可用性，同时不掩盖质量损失。">Fallback paths protect availability without hiding quality loss.</p>
+        </article></div>
+    </section>
+
+    <section class="section" id="loop">
+      <div class="section-head">
+        <div>
+          <h2 data-en="Implementation" data-zh="实现">Implementation</h2>
+          <p data-en="From raw signals to measurable behavior, each layer contributes a distinct part of the Agent system." data-zh="从原始信号到可衡量行为，每一层都承担 Agent 系统中不可替代的一部分。">From raw signals to measurable behavior, each layer contributes a distinct part of the Agent system.</p>
+        </div>
+      </div>
+      <div class="stages">
+        <article class="stage">
+          <div class="stage-index">01 / DATA</div>
+          <h3 data-en="Traffic intake" data-zh="流量接入">Traffic intake</h3>
+          <p data-en="Classify requests by context length, modality, urgency, and tenant." data-zh="按上下文长度、模态、紧急度与租户分类请求。">Classify requests by context length, modality, urgency, and tenant.</p>
+        </article>
+        <article class="stage">
+          <div class="stage-index">02 / MODELS</div>
+          <h3 data-en="Load forecast" data-zh="负载预测">Load forecast</h3>
+          <p data-en="Predict queue depth, burst shape, and capacity across heterogeneous hardware." data-zh="预测异构硬件上的队列深度、突发形态与容量。">Predict queue depth, burst shape, and capacity across heterogeneous hardware.</p>
+        </article>
+        <article class="stage">
+          <div class="stage-index">03 / TRAINING</div>
+          <h3 data-en="SLO routing" data-zh="SLO 路由">SLO routing</h3>
+          <p data-en="Choose model, engine, precision, and cache policy per request class." data-zh="为每类请求选择模型、引擎、精度与缓存策略。">Choose model, engine, precision, and cache policy per request class.</p>
+        </article>
+        <article class="stage">
+          <div class="stage-index">04 / INFERENCE</div>
+          <h3 data-en="Live observation" data-zh="实时观测">Live observation</h3>
+          <p data-en="Track TTFT, TPOT, cache hit rate, throughput, errors, and cost." data-zh="追踪 TTFT、TPOT、缓存命中、吞吐、错误与成本。">Track TTFT, TPOT, cache hit rate, throughput, errors, and cost.</p>
+        </article>
+        <article class="stage">
+          <div class="stage-index">05 / HARNESS</div>
+          <h3 data-en="Failure containment" data-zh="故障隔离">Failure containment</h3>
+          <p data-en="Drain, reroute, roll back, or downgrade before an SLO breach spreads." data-zh="在 SLO 违约扩散前执行摘流、重路由、回滚或降级。">Drain, reroute, roll back, or downgrade before an SLO breach spreads.</p>
+        </article>
+        <article class="stage">
+          <div class="stage-index">06 / EVAL</div>
+          <h3 data-en="Policy feedback" data-zh="策略回流">Policy feedback</h3>
+          <p data-en="Observed latency and quality update the next routing policy." data-zh="观测到的延迟与质量会更新下一轮路由策略。">Observed latency and quality update the next routing policy.</p>
+        </article></div>
+    </section>
+  </main>
+
+  <script>
+    (() => {
+      const root = document.documentElement;
+      const languageButton = document.querySelector("[data-language]");
+      const themeButton = document.querySelector("[data-theme-toggle]");
+      const translatable = [...document.querySelectorAll("[data-en][data-zh]")];
+      let language = root.lang === "zh" ? "zh" : "en";
+      const heroLines = [...document.querySelectorAll(".hero-title > span")];
+      const heroSubtitle = document.querySelector(".hero-subtitle");
+      const portraitImage = document.querySelector(".portrait-image");
+      const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)");
+      const streamTimers = [];
+      let streamToken = 0;
+
+      function clearStreamTimers() {
+        streamToken += 1;
+        streamTimers.splice(0).forEach(clearTimeout);
+      }
+
+      function wait(ms, token) {
+        return new Promise((resolve) => {
+          const timer = setTimeout(() => resolve(token === streamToken), ms);
+          streamTimers.push(timer);
+        });
+      }
+
+      function renderBrokenText(element, text) {
+        const marker = element.dataset.breakBefore;
+        const breakIndex = marker ? text.indexOf(marker) : -1;
+        element.replaceChildren();
+        if (breakIndex <= 0) {
+          element.textContent = text;
+          return;
+        }
+        element.append(document.createTextNode(text.slice(0, breakIndex)));
+        element.append(document.createElement("br"));
+        element.append(document.createTextNode(text.slice(breakIndex)));
+      }
+
+      async function streamText(element, text, token, breakBefore = "") {
+        element.style.visibility = "visible";
+        element.classList.add("is-streaming");
+        element.replaceChildren();
+        let textNode = document.createTextNode("");
+        element.append(textNode);
+        let breakInserted = false;
+        for (const character of Array.from(text)) {
+          if (token !== streamToken) return false;
+          if (!breakInserted && breakBefore && character === breakBefore) {
+            element.append(document.createElement("br"));
+            textNode = document.createTextNode("");
+            element.append(textNode);
+            breakInserted = true;
+          }
+          textNode.appendData(character);
+          await wait(/[，。！？；：,.!?;:]/.test(character) ? 62 : 18, token);
+        }
+        element.classList.remove("is-streaming");
+        return token === streamToken;
+      }
+
+      async function streamHero() {
+        clearStreamTimers();
+        const token = streamToken;
+        const lineTexts = heroLines.map((line) => line.textContent.trim());
+        const breakMarkers = heroLines.map((line) => line.dataset.breakBefore || "");
+        const subtitleText = heroSubtitle.textContent.trim();
+        if (reduceMotion.matches) {
+          heroLines.forEach((line, index) => renderBrokenText(line, lineTexts[index]));
+          return;
+        }
+        heroLines.forEach((line) => {
+          line.textContent = "";
+          line.style.visibility = "hidden";
+        });
+        heroSubtitle.textContent = "";
+        heroSubtitle.style.visibility = "hidden";
+        for (const [index, line] of heroLines.entries()) {
+          if (!(await streamText(line, lineTexts[index], token, breakMarkers[index]))) return;
+          await wait(110, token);
+        }
+        await streamText(heroSubtitle, subtitleText, token);
+      }
+
+      function syncPortrait() {
+        portraitImage.src = root.dataset.theme === "dark" ? "./assets/portrait-dark.png" : "./assets/portrait-light.png";
+      }
+
+      function applyLanguage() {
+        root.lang = language;
+        document.documentElement.dataset.language = language;
+        translatable.forEach((node) => { node.textContent = node.dataset[language]; });
+        languageButton.querySelector('[data-language-current="en"]').classList.toggle("is-current", language === "en");
+        languageButton.querySelector('[data-language-current="zh"]').classList.toggle("is-current", language === "zh");
+        try { localStorage.setItem("AgentInferAgent-language", language); } catch {}
+      }
+      languageButton.addEventListener("click", () => { language = language === "en" ? "zh" : "en"; applyLanguage(); });
+      themeButton.addEventListener("click", () => {
+        const next = root.dataset.theme === "dark" ? "light" : "dark";
+        root.dataset.theme = next;
+        syncPortrait();
+        themeButton.setAttribute("aria-pressed", String(next === "dark"));
+        try { localStorage.setItem("AgentInferAgent-theme", next); } catch {}
+      });
+      applyLanguage();
+      streamHero();
+      syncPortrait();
+      themeButton.setAttribute("aria-pressed", String(root.dataset.theme === "dark"));
+
+      const topbar = document.querySelector(".topbar");
+      const navLinks = [...document.querySelectorAll(".nav a")];
+      const sections = navLinks.map((link) => document.querySelector(link.getAttribute("href")));
+      const updateChrome = () => {
+        topbar.classList.toggle("is-scrolled", window.scrollY > 24);
+        const marker = 120;
+        let active = 0;
+        sections.forEach((section, index) => {
+          if (section && section.getBoundingClientRect().top <= marker) active = index;
+        });
+        navLinks.forEach((link, index) => link.classList.toggle("is-active", index === active));
+      };
+      window.addEventListener("scroll", updateChrome, { passive: true });
+      window.addEventListener("resize", updateChrome);
+      updateChrome();
+    })();
+  </script>
+</body>
+</html>
